@@ -54,7 +54,7 @@ namespace Suzuryg.FaceEmo.AppMain
             if (launcher.InspectorViewState == null) { launcher.InspectorViewState = ScriptableObject.CreateInstance<InspectorViewState>(); }
 
             // Avoid binding the same reference when the component is copied.
-            var instanceId = launcherObject.GetInstanceID();
+            var instanceId = ObjectIdUtility.GetId(launcherObject);
             if (instanceId != launcher.InstanceId)
             {
                 var AV3Setting = ScriptableObject.CreateInstance<AV3Setting>();
@@ -86,7 +86,7 @@ namespace Suzuryg.FaceEmo.AppMain
                 launcher.InspectorViewState = InspectorViewState;
 
                 // Avoid sharing FaceEmoPrefab when the component is copied.
-                var others = UnityEngine.Object.FindObjectsOfType<FaceEmoLauncherComponent>().Where(x => x != null && x.InstanceId == launcher.InstanceId);
+                var others = UnityEngine.Object.FindObjectsByType<FaceEmoLauncherComponent>(FindObjectsSortMode.None).Where(x => x != null && x.InstanceId == launcher.InstanceId);
                 if (others.Count() > 1)
                 {
                     foreach (var other in others.OrderBy(x => x.name).Skip(1))

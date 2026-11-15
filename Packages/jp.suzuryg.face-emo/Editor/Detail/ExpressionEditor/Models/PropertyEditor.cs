@@ -103,7 +103,7 @@ namespace Suzuryg.FaceEmo.Detail.ExpressionEditor.Models
             foreach (var gameObject in _av3Setting.AdditionalToggleObjects)
             {
                 if (gameObject == null) continue;
-                var id = gameObject.GetInstanceID();
+                var id = ObjectIdUtility.GetId(gameObject);
                 _toggles[id] = (gameObject, gameObject.activeSelf);
             }
 
@@ -111,7 +111,7 @@ namespace Suzuryg.FaceEmo.Detail.ExpressionEditor.Models
             foreach (var gameObject in _av3Setting.AdditionalTransformObjects)
             {
                 if (gameObject == null) continue;
-                var id = gameObject.GetInstanceID();
+                var id = ObjectIdUtility.GetId(gameObject);
                 _transforms[id] = TransformProxy.FromGameObject(gameObject);
             }
         }

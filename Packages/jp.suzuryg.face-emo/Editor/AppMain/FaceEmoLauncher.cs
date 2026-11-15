@@ -212,17 +212,34 @@ namespace Suzuryg.FaceEmo.AppMain
         [InitializeOnLoadMethod]
         private static void AddHierarchyItemOnGUI()
         {
+#if UNITY_6000_2_OR_NEWER
+            EditorApplication.hierarchyWindowItemByEntityIdOnGUI += HierarchyWindowItemByEntityIdOnGUI;
+#else
             EditorApplication.hierarchyWindowItemOnGUI += HierarchyWindowItemOnGUI;
+#endif
         }
 
+#if UNITY_6000_2_OR_NEWER
+        private static void HierarchyWindowItemByEntityIdOnGUI(EntityId entityId, Rect selectionRect)
+        {
+            HierarchyWindowItemOnGUI(EditorUtility.EntityIdToObject(entityId) as GameObject, selectionRect);
+        }
+#endif
+
+#if !UNITY_6000_2_OR_NEWER
         private static void HierarchyWindowItemOnGUI(int instanceID, Rect selectionRect)
+        {
+            HierarchyWindowItemOnGUI(EditorUtility.InstanceIDToObject(instanceID) as GameObject, selectionRect);
+        }
+#endif
+
+        private static void HierarchyWindowItemOnGUI(GameObject gameObject, Rect selectionRect)
         {
             if (EditorPrefs.GetBool(DetailConstants.KeyHideHierarchyIcon, DetailConstants.DefaultHideHierarchyIcon))
             {
                 return;
             }
 
-            var gameObject = EditorUtility.InstanceIDToObject(instanceID) as GameObject;
             if (gameObject == null)
             {
                 return;
@@ -258,7 +275,7 @@ namespace Suzuryg.FaceEmo.AppMain
 
         private static bool TryLaunchFromExisting(BasisAvatar avatar)
         {
-            foreach (var launcher in FindObjectsOfType<FaceEmoLauncherComponent>()?.OrderBy(x => x.name))
+            foreach (var launcher in FindObjectsByType<FaceEmoLauncherComponent>(FindObjectsSortMode.None)?.OrderBy(x => x.name))
             {
                 if (ReferenceEquals(launcher?.AV3Setting?.TargetAvatar, avatar))
                 {
@@ -271,7 +288,7 @@ namespace Suzuryg.FaceEmo.AppMain
 
         private static bool TryLaunchFromCheckpoint(BasisAvatar avatar, LocalizationTable loc)
         {
-            foreach (var checkpoint in FindObjectsOfType<RestorationCheckpoint>()?.OrderBy(x => x.name))
+            foreach (var checkpoint in FindObjectsByType<RestorationCheckpoint>(FindObjectsSortMode.None)?.OrderBy(x => x.name))
             {
                 if (!ReferenceEquals(checkpoint.TargetAvatar, avatar) || !CanRestore(checkpoint)) { continue; }
 
