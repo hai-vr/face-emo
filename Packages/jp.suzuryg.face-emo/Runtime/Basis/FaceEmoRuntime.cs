@@ -43,6 +43,8 @@ namespace Suzuryg.FaceEmo.Baked
         Transform _leftHand;
         Transform _rightHand;
         byte[] _curled;           // 10 = hand * 5 + finger; 1 = curled
+        byte[] _present;          // 10: 1 if the finger has all three bones
+        byte[] _hasFingers;       // 2: 1 if the hand has at least one of index..little
         float _nextEval;
         int _leftGesture;
         int _rightGesture;
@@ -59,7 +61,9 @@ namespace Suzuryg.FaceEmo.Baked
         void OnReady(bool isOwner)
         {
             Parse();
-            Animator animator = _avatar.Animator;
+            // NOT _avatar.Animator: the shim exposes it as a property but the compiled script reads a field, and Cilbox fails
+            // the build with "Could not find field ... BasisAvatarShim.Animator". GetComponent works.
+            Animator animator = BasisAvatar.GetGameObject(this).GetComponent<Animator>();
             if (animator == null) return;
             _leftHand = animator.GetBoneTransform((HumanBodyBones)17);
             _rightHand = animator.GetBoneTransform((HumanBodyBones)18);
@@ -70,9 +74,30 @@ namespace Suzuryg.FaceEmo.Baked
                 _leftBones[i] = animator.GetBoneTransform((HumanBodyBones)(24 + i));
                 _rightBones[i] = animator.GetBoneTransform((HumanBodyBones)(39 + i));
             }
-            _curled = new byte[10];
+            SetupFingers();
             _mode = _defaultMode;
             _ready = 1;
+        }
+
+        // Which fingers the avatar has. A missing finger is ignored when matching a sign (see Classify).
+        void SetupFingers()
+        {
+            _curled = new byte[10];
+            _present = new byte[10];
+            _hasFingers = new byte[2];
+            for (int h = 0; h < 2; h++)
+            {
+                Transform[] bones = h == 0 ? _leftBones : _rightBones;
+                Transform wrist = h == 0 ? _leftHand : _rightHand;
+                for (int f = 0; f < 5; f++)
+                {
+                    if (wrist != null && bones[f * 3] != null && bones[f * 3 + 1] != null && bones[f * 3 + 2] != null)
+                    {
+                        _present[h * 5 + f] = 1;
+                        if (f > 0) _hasFingers[h] = 1;
+                    }
+                }
+            }
         }
 
         void Parse()
@@ -138,30 +163,34 @@ namespace Suzuryg.FaceEmo.Baked
             return Vector3.Angle(a, b) + Vector3.Angle(b, c);
         }
 
+        // A sign constrains index, middle, ring and little. A finger the avatar does not have constrains nothing: only the
+        // fingers that exist decide. If that makes two signs identical, the first one in the list below wins.
+        bool Ok(int s, int role, int want)
+        {
+            return _present[s + role] == 0 || _curled[s + role] == want;
+        }
+
         // Returns a FaceEmo HandGesture (0 Neutral, 1 Fist, 2 HandOpen, 3 Fingerpoint, 4 Victory, 5 RockNRoll, 6 HandGun, 7 ThumbsUp)
         int Classify(int hand, Transform wrist, Transform[] bones)
         {
+            if (_hasFingers[hand] == 0) return 0;
+            int s = hand * 5;
             for (int f = 0; f < 5; f++)
             {
+                if (_present[s + f] == 0) continue;
                 float curl = Curl(wrist, bones[f * 3], bones[f * 3 + 1], bones[f * 3 + 2]);
                 float on = f == 0 ? ThumbCurlOn : CurlOn;
                 float off = f == 0 ? ThumbCurlOff : CurlOff;
-                int i = hand * 5 + f;
-                if (_curled[i] == 0 && curl > on) _curled[i] = 1;
-                else if (_curled[i] == 1 && curl < off) _curled[i] = 0;
+                if (_curled[s + f] == 0 && curl > on) _curled[s + f] = 1;
+                else if (_curled[s + f] == 1 && curl < off) _curled[s + f] = 0;
             }
-            int s = hand * 5;
-            int thumb = _curled[s];
-            int idx = _curled[s + 1];
-            int mid = _curled[s + 2];
-            int ring = _curled[s + 3];
-            int lit = _curled[s + 4];
+            int thumb = _present[s] == 1 ? _curled[s] : 1; // no thumb counts as curled, so Fist / Fingerpoint / Victory still work
 
-            if (idx == 0 && mid == 0 && ring == 0 && lit == 0) return 2;
-            if (idx == 1 && mid == 1 && ring == 1 && lit == 1) return thumb == 0 ? 7 : 1;
-            if (idx == 0 && mid == 1 && ring == 1 && lit == 1) return thumb == 0 ? 6 : 3;
-            if (idx == 0 && mid == 0 && ring == 1 && lit == 1) return 4;
-            if (idx == 0 && mid == 1 && ring == 1 && lit == 0) return 5;
+            if (Ok(s, 1, 0) && Ok(s, 2, 0) && Ok(s, 3, 0) && Ok(s, 4, 0)) return 2;
+            if (Ok(s, 1, 1) && Ok(s, 2, 1) && Ok(s, 3, 1) && Ok(s, 4, 1)) return thumb == 0 ? 7 : 1;
+            if (Ok(s, 1, 0) && Ok(s, 2, 1) && Ok(s, 3, 1) && Ok(s, 4, 1)) return thumb == 0 ? 6 : 3;
+            if (Ok(s, 1, 0) && Ok(s, 2, 0) && Ok(s, 3, 1) && Ok(s, 4, 1)) return 4;
+            if (Ok(s, 1, 0) && Ok(s, 2, 1) && Ok(s, 3, 1) && Ok(s, 4, 0)) return 5;
             return 0;
         }
     }
