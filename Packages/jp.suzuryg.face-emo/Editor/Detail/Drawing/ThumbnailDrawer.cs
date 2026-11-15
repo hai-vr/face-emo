@@ -1,4 +1,5 @@
-﻿using Suzuryg.FaceEmo.Domain;
+﻿using Basis.Scripts.BasisSdk;
+using Suzuryg.FaceEmo.Domain;
 using Suzuryg.FaceEmo.Components.Settings;
 using Suzuryg.FaceEmo.Detail.AV3;
 using Suzuryg.FaceEmo.Detail.View;
@@ -13,7 +14,6 @@ using UnityEditor;
 using UniRx;
 using UnityEngine.SceneManagement;
 using UnityEditor.SceneManagement;
-using VRC.SDK3.Avatars.Components;
 using Object = UnityEngine.Object;
 
 namespace Suzuryg.FaceEmo.Detail.Drawing
@@ -220,7 +220,7 @@ namespace Suzuryg.FaceEmo.Detail.Drawing
             }
 
             // Get Animator
-            var targetAvatar = _aV3Setting.TargetAvatar as VRCAvatarDescriptor;
+            var targetAvatar = _aV3Setting.TargetAvatar as BasisAvatar;
             var avatarAnimator = AV3Utility.GetAnimator(_aV3Setting);
             if (targetAvatar == null || avatarAnimator == null)
             {
@@ -236,7 +236,7 @@ namespace Suzuryg.FaceEmo.Detail.Drawing
                 // Clone avatar
                 clonedAvatar = Object.Instantiate(avatarAnimator.gameObject);
 
-                var desc = clonedAvatar.GetComponent<VRCAvatarDescriptor>();
+                var desc = clonedAvatar.GetComponent<BasisAvatar>();
                 if (desc != null) Object.DestroyImmediate(desc);
 
                 // FIXME: Unable to support the case that avatar's body shape balance is tuned by root object's scale. (Is it necessary to assume this case...?)
@@ -289,7 +289,7 @@ namespace Suzuryg.FaceEmo.Detail.Drawing
 
                 // Generate thumbnails
                 var requests = new List<string>(_requests);
-                AnimationClip poseClip = AV3Utility.GetAvatarPoseClip(_aV3Setting?.TargetAvatar as VRCAvatarDescriptor);
+                AnimationClip poseClip = AV3Utility.GetAvatarPoseClip(_aV3Setting?.TargetAvatar as BasisAvatar);
                 foreach (var guid in requests)
                 {
                     _cache[guid] = RenderAnimatedAvatar(guid, clonedAvatar, camera, poseClip, AnimationProgress);

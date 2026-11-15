@@ -1,19 +1,21 @@
-﻿using UnityEngine;
-using VRC.SDK3.Avatars.Components;
+﻿using Basis.Scripts.BasisSdk;
+using UnityEngine;
 
 namespace Suzuryg.FaceEmo.Detail.AV3
 {
     internal static class AV3Extensions
     {
-        public static Vector3 GetScaledViewPosition(this VRCAvatarDescriptor avatarDescriptor)
+        // Eye position in the avatar's local space, divided by the root scale.
+        // BasisAvatar.AvatarEyePosition = (x: height above the animator root, y: forward offset).
+        public static Vector3 GetScaledViewPosition(this BasisAvatar avatar)
         {
-            if (avatarDescriptor == null || avatarDescriptor.gameObject == null || avatarDescriptor.gameObject.transform == null)
+            if (avatar == null || avatar.gameObject == null || avatar.gameObject.transform == null)
             {
                 return Vector3.zero;
             }
 
-            var viewPosition = avatarDescriptor.ViewPosition;
-            var scale = avatarDescriptor.gameObject.transform.localScale;
+            var viewPosition = new Vector3(0, avatar.AvatarEyePosition.x, avatar.AvatarEyePosition.y);
+            var scale = avatar.gameObject.transform.localScale;
 
             if (Mathf.Approximately(scale.x, 0) || Mathf.Approximately(scale.y, 0) || Mathf.Approximately(scale.z, 0))
             {

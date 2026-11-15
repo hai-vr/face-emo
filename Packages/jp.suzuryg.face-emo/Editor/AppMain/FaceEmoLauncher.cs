@@ -1,4 +1,4 @@
-﻿using Suzuryg.FaceEmo.Detail.AV3.Importers;
+﻿using Basis.Scripts.BasisSdk;
 using Suzuryg.FaceEmo.Domain;
 using Suzuryg.FaceEmo.UseCase;
 using Suzuryg.FaceEmo.Components;
@@ -15,8 +15,6 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using Suzuryg.FaceEmo.Detail.Localization;
 using UniRx;
-using VRC.SDK3.Avatars.Components;
-using VRC.SDK3.Dynamics.Contact.Components;
 using System.Linq;
 
 namespace Suzuryg.FaceEmo.AppMain
@@ -61,23 +59,7 @@ namespace Suzuryg.FaceEmo.AppMain
             }
         }
 
-        private static bool CanLaunch()
-        {
-            var canLaunch = true;
-            var loc = LocalizationSetting.GetTable(LocalizationSetting.GetLocale());
-
-#if !USE_MODULAR_AVATAR
-            EditorUtility.DisplayDialog(DomainConstants.SystemName, LocalizationSetting.InsertLineBreak(loc.Launcher_Message_CheckModularAvatar), "OK");
-            canLaunch = false;
-#endif
-
-#if !VALID_VRCSDK3_AVATARS
-            EditorUtility.DisplayDialog(DomainConstants.SystemName, LocalizationSetting.InsertLineBreak(loc.Launcher_Message_CheckVrcSdk3Avatars), "OK");
-            canLaunch = false;
-#endif
-
-            return canLaunch;
-        }
+        private static bool CanLaunch() => true;
 
         public static void Launch(FaceEmoLauncherComponent launcher)
         {
@@ -246,8 +228,8 @@ namespace Suzuryg.FaceEmo.AppMain
                 return;
             }
 
-            var avatarDescriptor = gameObject.GetComponent<VRCAvatarDescriptor>();
-            if (avatarDescriptor == null)
+            var avatar = gameObject.GetComponent<BasisAvatar>();
+            if (avatar == null)
             {
                 return;
             }
@@ -265,20 +247,20 @@ namespace Suzuryg.FaceEmo.AppMain
             {
                 if (!CanLaunch()) { return; }
 
-                if (TryLaunchFromExisting(avatarDescriptor)) { return; }
+                if (TryLaunchFromExisting(avatar)) { return; }
 
-                if (TryLaunchFromCheckpoint(avatarDescriptor, loc)) { return; }
+                if (TryLaunchFromCheckpoint(avatar, loc)) { return; }
 
-                LaunchFromNew(avatarDescriptor, loc);
+                LaunchFromNew(avatar, loc);
             }
             GUI.DrawTexture(selectionRect, icon, ScaleMode.ScaleToFit, alphaBlend: true);
         }
 
-        private static bool TryLaunchFromExisting(VRCAvatarDescriptor avatarDescriptor)
+        private static bool TryLaunchFromExisting(BasisAvatar avatar)
         {
             foreach (var launcher in FindObjectsOfType<FaceEmoLauncherComponent>()?.OrderBy(x => x.name))
             {
-                if (ReferenceEquals(launcher?.AV3Setting?.TargetAvatar, avatarDescriptor))
+                if (ReferenceEquals(launcher?.AV3Setting?.TargetAvatar, avatar))
                 {
                     Launch(launcher);
                     return true;
@@ -287,11 +269,11 @@ namespace Suzuryg.FaceEmo.AppMain
             return false;
         }
 
-        private static bool TryLaunchFromCheckpoint(VRCAvatarDescriptor avatarDescriptor, LocalizationTable loc)
+        private static bool TryLaunchFromCheckpoint(BasisAvatar avatar, LocalizationTable loc)
         {
             foreach (var checkpoint in FindObjectsOfType<RestorationCheckpoint>()?.OrderBy(x => x.name))
             {
-                if (!ReferenceEquals(checkpoint.TargetAvatar, avatarDescriptor) || !CanRestore(checkpoint)) { continue; }
+                if (!ReferenceEquals(checkpoint.TargetAvatar, avatar) || !CanRestore(checkpoint)) { continue; }
 
                 if (OptoutableDialog.Show(DomainConstants.SystemName, loc.Launcher_Message_Restore, "OK", isRiskyAction: false))
                 {
@@ -314,17 +296,17 @@ namespace Suzuryg.FaceEmo.AppMain
             return false;
         }
 
-        private static void LaunchFromNew(VRCAvatarDescriptor avatarDescriptor, LocalizationTable loc)
+        private static void LaunchFromNew(BasisAvatar avatar, LocalizationTable loc)
         {
             var launcherObject = CreateCommand();
             var installer = new FaceEmoInstaller(launcherObject);
 
             var launcher = launcherObject.GetComponent<FaceEmoLauncherComponent>();
-            launcher.AV3Setting.TargetAvatar = avatarDescriptor;
+            launcher.AV3Setting.TargetAvatar = avatar;
 
             try
             {
-                ImportPatternsAndOptions(launcherObject, installer, avatarDescriptor);
+                ImportPatternsAndOptions(launcherObject, installer, avatar);
             }
             catch (Exception ex)
             {
@@ -334,141 +316,18 @@ namespace Suzuryg.FaceEmo.AppMain
                 DestroyImmediate(launcher);
                 new FaceEmoInstaller(launcherObject);
                 launcher = launcherObject.GetComponent<FaceEmoLauncherComponent>();
-                launcher.AV3Setting.TargetAvatar = avatarDescriptor;
+                launcher.AV3Setting.TargetAvatar = avatar;
             }
             Launch(launcher);
         }
 
-        private static void ImportPatternsAndOptions(GameObject rootObject, FaceEmoInstaller installer, VRCAvatarDescriptor avatarDescriptor)
+        // The VRChat FX importers were removed in the Basis port: a new project starts with an empty menu.
+        private static void ImportPatternsAndOptions(GameObject rootObject, FaceEmoInstaller installer, BasisAvatar avatar)
         {
-            using (var disposables = new CompositeDisposable())
-            {
-                // resolve
-                var av3Setting = installer.Container.Resolve<AV3Setting>();
-                var menuRepository = installer.Container.Resolve<IMenuRepository>();
-                var selectionSynchronizer = installer.Container.Resolve<SelectionSynchronizer>().AddTo(disposables);
-                var localizationSetting = installer.Container.Resolve<IReadOnlyLocalizationSetting>();
-                var localizationTable = localizationSetting.Table;
-
-                // initialize
-                var menu = menuRepository.Load(string.Empty);
-                var expressionImporter = new ExpressionImporter(menu, av3Setting, ImportUtility.GetNewAssetDir(), localizationSetting);
-                var contactImporter = new ContactSettingImporter(av3Setting);
-
-                // import
-                var importedClips = expressionImporter.ImportOptionalClips(avatarDescriptor);
-                expressionImporter.ForceBlinkDisable = importedClips.blink != null;
-                var importedPatterns = expressionImporter.ImportExpressionPatterns(avatarDescriptor);
-                var importedContacts = contactImporter.Import(avatarDescriptor);
-
-                var fxDisableSwitchExists = FxDisableSwitchDetector.Detect(avatarDescriptor);
-                av3Setting.DisableFxDuringDancing = fxDisableSwitchExists;
-
-                // confirm
-                if (importedContacts.Any() && !OptoutableDialog.Show(DomainConstants.SystemName,
-                        LocalizationSetting.InsertLineBreak(localizationTable
-                            .ExpressionImporter_Message_EnableCotactGimmicks),
-                        localizationTable.Common_Enable, localizationTable.Common_DontEnable))
-                {
-                    contactImporter.Clear();
-                    importedContacts = new List<VRCContactReceiver>();
-                }
-
-                var needsPrefix = FxParameterChecker.CheckPrefixNeeds(avatarDescriptor);
-                av3Setting.AddParameterPrefix = needsPrefix;
-
-                // change selection
-                if (menu.Registered.Order.Any())
-                {
-                    selectionSynchronizer.ChangeMenuItemListViewSelection(menu.Registered.Order.First());
-                }
-
-                // save
-                EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
-                menuRepository.Save(string.Empty, menu, "Import Expression Patterns");
-
-                // pattern results
-                var patternResults = new List<(MessageType type, string message)>();
-                if (importedPatterns.Any())
-                {
-                    patternResults.Add((MessageType.None, localizationTable.ExpressionImporter_Message_PatternsImported));
-                    patternResults.Add((MessageType.None, string.Empty));
-
-                    foreach (var pattern in importedPatterns)
-                    {
-                        patternResults.Add((MessageType.None, $"{pattern.DisplayName}{localizationTable.Common_Colon}{pattern.Branches.Count}{localizationTable.ExpressionImporter_Expressions}"));
-                    }
-
-                    patternResults.Add((MessageType.None, string.Empty));
-                    patternResults.Add((MessageType.Info, LocalizationSetting.InsertLineBreak(localizationTable.ExpressionImporter_Info_BehaviorDifference)));
-                }
-                else
-                {
-                    patternResults.Add((MessageType.None, localizationTable.ExpressionImporter_Message_NoPatterns));
-                }
-
-                // option results
-                var optionResults = new List<(MessageType type, string message)>();
-                if (importedClips.blink != null)
-                {
-                    optionResults.Add((MessageType.None, string.Empty));
-                    optionResults.Add((MessageType.None, $"{localizationTable.ExpressionImporter_Blink}{localizationTable.Common_Colon}{importedClips.blink.name}"));
-                }
-                if (importedClips.mouthMorphCancel != null)
-                {
-                    optionResults.Add((MessageType.None, string.Empty));
-                    optionResults.Add((MessageType.None, $"{localizationTable.ExpressionImporter_MouthMorphCanceler}{localizationTable.Common_Colon}{importedClips.mouthMorphCancel.name}"));
-                }
-                if (importedContacts.Any())
-                {
-                    optionResults.Add((MessageType.None, string.Empty));
-                    optionResults.Add((MessageType.None, $"{localizationTable.ExpressionImporter_Contacts}{localizationTable.Common_Colon}"));
-                    foreach (var contact in importedContacts)
-                    {
-                        optionResults.Add((MessageType.None, contact.name));
-                    }
-                }
-                if (fxDisableSwitchExists)
-                {
-                    optionResults.Add((MessageType.None, string.Empty));
-                    optionResults.Add((MessageType.None,
-                        $"{localizationTable.InspectorView_Dance}{localizationTable.Common_Colon}{localizationTable.InspectorView_Dance_DisableEntireFxLayer}"));
-                }
-
-                optionResults.Add((MessageType.None, string.Empty));
-                optionResults.Add((MessageType.None, $"{localizationTable.ExpressionImporter_Prefix}{localizationTable.Common_Colon}" + (needsPrefix ? localizationTable.Common_Enabled : localizationTable.Common_Disabled)));
-
-                if (optionResults.Any())
-                {
-                    optionResults.Insert(0, (MessageType.None, localizationTable.ExpressionImporter_Message_OptionalSettingsImported));
-
-                    if (rootObject != null)
-                    {
-                        var path = rootObject.GetFullPath();
-                        if (path.StartsWith("/"))
-                        {
-                            path = path.Substring(1);
-                        }
-                        optionResults.Add((MessageType.None, string.Empty));
-                        optionResults.Add((MessageType.Info, localizationTable.ExpressionImporter_Info_ChangeOptionalSettings + "\n\n" + path));
-                    }
-                }
-                else
-                {
-                    optionResults.Add((MessageType.None, localizationTable.ExpressionImporter_Message_NoOptionalSettings));
-                }
-
-                // show messages
-                var messages = new List<(MessageType type, string message)>(patternResults);
-                messages.Add((MessageType.None, string.Empty));
-                foreach (var item in optionResults)
-                {
-                    messages.Add(item);
-                }
-                OptoutableDialog.Show(DomainConstants.SystemName, string.Empty,
-                    "OK", isRiskyAction: false,
-                    additionalMessages: messages, windowHeight: OptoutableDialog.GetHeightWithoutMessage());
-            }
+            var menuRepository = installer.Container.Resolve<IMenuRepository>();
+            var menu = menuRepository.Load(string.Empty);
+            EditorSceneManager.MarkSceneDirty(SceneManager.GetActiveScene());
+            menuRepository.Save(string.Empty, menu, "Create project");
         }
 
         private const string HideHierarchyIconPath = "FaceEmo/Hide Hierarchy Icon";

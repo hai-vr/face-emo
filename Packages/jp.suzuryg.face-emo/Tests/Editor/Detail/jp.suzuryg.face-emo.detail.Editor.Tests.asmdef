@@ -6,7 +6,8 @@
         "jp.suzuryg.face-emo.detail.Editor",
         "jp.suzuryg.face-emo.components.Runtime",
         "jp.suzuryg.face-emo.detail.Runtime.Tests",
-        "jp.suzuryg.face-emo.external.mathijs-bakker.extenject.Runtime"
+        "jp.suzuryg.face-emo.external.mathijs-bakker.extenject.Runtime",
+        "BasisSDK"
     ],
     "includePlatforms": [
         "Editor"
@@ -15,11 +16,7 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
-        "nunit.framework.dll",
-        "VRCSDK3A.dll",
-        "VRCSDKBase.dll",
-        "VRC.Dynamics.dll",
-        "VRC.SDK3.Dynamics.Contact.dll"
+        "nunit.framework.dll"
     ],
     "autoReferenced": false,
     "defineConstraints": [],

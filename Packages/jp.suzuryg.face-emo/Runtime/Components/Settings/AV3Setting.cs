@@ -7,8 +7,8 @@ namespace Suzuryg.FaceEmo.Components.Settings
 {
     public class AV3Setting : ScriptableObject
     {
-        // Independent of VRCSDK to prevent ScriptableObject references breaking in the event of a compilation error.
-        // Cast to VRCAvatarDescriptor when in use.
+        // Independent of any avatar SDK to prevent ScriptableObject references breaking in the event of a compilation error.
+        // Cast to Basis.Scripts.BasisSdk.BasisAvatar (editor side) when in use.
         public MonoBehaviour TargetAvatar;
         public string TargetAvatarPath;
 

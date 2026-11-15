@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Basis.Scripts.BasisSdk;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using JetBrains.Annotations;
@@ -7,7 +8,6 @@ using Suzuryg.FaceEmo.Detail.AV3;
 using Suzuryg.FaceEmo.Domain;
 using UnityEditor;
 using UnityEngine;
-using VRC.SDK3.Avatars.Components;
 
 namespace Suzuryg.FaceEmo.Detail.ExpressionEditor.Models
 {
@@ -47,7 +47,7 @@ namespace Suzuryg.FaceEmo.Detail.ExpressionEditor.Models
 
         public void FetchPreviewAvatar()
         {
-            var avatarDescriptor = _av3Setting.TargetAvatar as VRCAvatarDescriptor;
+            var avatarDescriptor = _av3Setting.TargetAvatar as BasisAvatar;
             _animator = avatarDescriptor?.gameObject.GetComponent<Animator>();
 
             _faceBlendShapes.Clear();

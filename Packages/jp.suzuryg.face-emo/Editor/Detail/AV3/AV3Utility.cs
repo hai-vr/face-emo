@@ -1,11 +1,10 @@
-﻿using AnimatorAsCode.V0;
+
+using Basis.Scripts.BasisSdk;
 using UnityEngine;
 using UnityEditor.Animations;
 using UnityEditor;
-using VRC.SDKBase;
 using Suzuryg.FaceEmo.Domain;
 using Suzuryg.FaceEmo.Components.Settings;
-using VRC.SDK3.Avatars.Components;
 using System;
 using System.IO;
 using System.Linq;
@@ -90,32 +89,6 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             }
         }
 
-        public static VRC_AnimatorTrackingControl.TrackingType ConvertEyeTrackingType(EyeTrackingControl eyeTrackingControl)
-        {
-            switch (eyeTrackingControl)
-            {
-                case EyeTrackingControl.Tracking:
-                    return VRC_AnimatorTrackingControl.TrackingType.Tracking;
-                case EyeTrackingControl.Animation:
-                    return VRC_AnimatorTrackingControl.TrackingType.Animation;
-                default:
-                    throw new FaceEmoException("Unknown tracking type.");
-            }
-        }
-
-        public static VRC_AnimatorTrackingControl.TrackingType ConvertMouthTrackingType(MouthTrackingControl mouthTrackingControl)
-        {
-            switch (mouthTrackingControl)
-            {
-                case MouthTrackingControl.Tracking:
-                    return VRC_AnimatorTrackingControl.TrackingType.Tracking;
-                case MouthTrackingControl.Animation:
-                    return VRC_AnimatorTrackingControl.TrackingType.Animation;
-                default:
-                    throw new FaceEmoException("Unknown tracking type.");
-            }
-        }
-
         public static (AnimationClip clip, string name) GetAnimationClipWithName(Domain.Animation animation)
         {
             if (animation is Domain.Animation && animation.GUID is string && AssetDatabase.GUIDToAssetPath(animation.GUID) is string path)
@@ -137,54 +110,45 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             return (int)left * numOfGesture + (int)right;
         }
 
-        public static SkinnedMeshRenderer GetFaceMesh(VRCAvatarDescriptor avatarDescriptor)
+        public static SkinnedMeshRenderer GetFaceMesh(BasisAvatar avatar)
         {
-            if (avatarDescriptor == null) { return null; }
+            if (avatar == null) { return null; }
 
-            SkinnedMeshRenderer faceMesh = null;
-            // Get from lipSync
-            if (avatarDescriptor.lipSync == VRC_AvatarDescriptor.LipSyncStyle.VisemeBlendShape &&
-                avatarDescriptor.VisemeSkinnedMesh != null)
+            // Basis stores the face meshes on the avatar itself.
+            if (avatar.FaceVisemeMesh != null) { return avatar.FaceVisemeMesh; }
+            if (avatar.FaceBlinkMesh != null) { return avatar.FaceBlinkMesh; }
+
+            // Fall back to a child object named "Body".
+            if (avatar.gameObject != null && avatar.gameObject.transform != null)
             {
-                faceMesh = avatarDescriptor.VisemeSkinnedMesh;
-            }
-            // Get from eyelids
-            else if (avatarDescriptor.customEyeLookSettings.eyelidType == VRCAvatarDescriptor.EyelidType.Blendshapes &&
-                avatarDescriptor.customEyeLookSettings.eyelidsSkinnedMesh != null)
-            {
-                faceMesh = avatarDescriptor.customEyeLookSettings.eyelidsSkinnedMesh;
-            }
-            // Get from body object
-            else if (avatarDescriptor.gameObject != null && avatarDescriptor.gameObject.transform != null)
-            {
-                var avatarRoot = avatarDescriptor.gameObject.transform;
+                var avatarRoot = avatar.gameObject.transform;
                 for (int i = 0; i < avatarRoot.childCount; i++)
                 {
                     var child = avatarRoot.GetChild(i);
                     if (child != null && child.name == "Body")
                     {
-                        faceMesh = child.GetComponent<SkinnedMeshRenderer>();
-                        if (faceMesh != null) { break; }
+                        var faceMesh = child.GetComponent<SkinnedMeshRenderer>();
+                        if (faceMesh != null) { return faceMesh; }
                     }
                 }
             }
-            return faceMesh;
+            return null;
         }
 
-        public static HashSet<BlendShape> GetBlendShapesToBeExcluded(VRCAvatarDescriptor avatarDescriptor, bool excludeBlink, bool excludeLipSync)
+        public static HashSet<BlendShape> GetBlendShapesToBeExcluded(BasisAvatar avatar, bool excludeBlink, bool excludeLipSync)
         {
             HashSet<BlendShape> toBeExcluded = new HashSet<BlendShape>();
 
-            // Exclude shape key for blinking when using AvatarDescriptor's blink feature
+            // Exclude shape keys that Basis drives for blinking
             if (excludeBlink)
             {
-                toBeExcluded = new HashSet<BlendShape>(GetEyeLidsBlendShapes(avatarDescriptor));
+                toBeExcluded = new HashSet<BlendShape>(GetEyeLidsBlendShapes(avatar));
             }
 
-            // Exclude shape key for lip-sync
+            // Exclude shape keys that Basis drives for lip-sync
             if (excludeLipSync)
             {
-                foreach (var blendShape in GetLipSyncBlendShapes(avatarDescriptor))
+                foreach (var blendShape in GetLipSyncBlendShapes(avatar))
                 {
                     toBeExcluded.Add(blendShape);
                 }
@@ -193,90 +157,56 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             return toBeExcluded;
         }
 
-        // FIXME: This method should be merged with GetEyeLidsBlendShapes().
-        public static BlendShape GetBlinkBlendShape(VRCAvatarDescriptor avatarDescriptor)
+        // First blink blend shape of the avatar (BasisAvatar.BlinkViseme[0] on BasisAvatar.FaceBlinkMesh).
+        public static BlendShape GetBlinkBlendShape(BasisAvatar avatar)
         {
-            if (avatarDescriptor != null &&
-                avatarDescriptor.customEyeLookSettings.eyelidsBlendshapes != null &&
-                avatarDescriptor.customEyeLookSettings.eyelidsSkinnedMesh != null &&
-                avatarDescriptor.customEyeLookSettings.eyelidsSkinnedMesh.sharedMesh != null)
-            {
-                var skinnedMesh = avatarDescriptor.customEyeLookSettings.eyelidsSkinnedMesh;
-                var transformPath = GetPathFromAvatarRoot(skinnedMesh.transform, avatarDescriptor);
-                if (transformPath == null) { return null; }
-
-                if (avatarDescriptor.customEyeLookSettings.eyelidsBlendshapes.Length > 0)
-                {
-                    var index = avatarDescriptor.customEyeLookSettings.eyelidsBlendshapes[0];
-                    if (0 <= index && index < skinnedMesh.sharedMesh.blendShapeCount)
-                    {
-                        var name = skinnedMesh.sharedMesh.GetBlendShapeName(index);
-                        return new BlendShape(path: transformPath, name: name);
-                    }
-                }
-            }
-            return null;
+            var list = GetEyeLidsBlendShapes(avatar);
+            return list.Count > 0 ? list[0] : null;
         }
 
-        // FIXME: Refactoring is needed because of confusion between "blink" and "eyelid" blend shapes in this method calls.
-        public static List<BlendShape> GetEyeLidsBlendShapes(VRCAvatarDescriptor avatarDescriptor)
+        // Blend shapes that Basis uses for blinking (indices into the mesh of BasisAvatar.FaceBlinkMesh).
+        public static List<BlendShape> GetEyeLidsBlendShapes(BasisAvatar avatar)
+        {
+            return GetBlendShapesFromIndices(avatar, avatar != null ? avatar.FaceBlinkMesh : null, avatar != null ? avatar.BlinkViseme : null);
+        }
+
+        // Blend shapes that Basis uses for visemes (indices into the mesh of BasisAvatar.FaceVisemeMesh).
+        public static List<BlendShape> GetLipSyncBlendShapes(BasisAvatar avatar)
+        {
+            return GetBlendShapesFromIndices(avatar, avatar != null ? avatar.FaceVisemeMesh : null, avatar != null ? avatar.FaceVisemeMovement : null);
+        }
+
+        private static List<BlendShape> GetBlendShapesFromIndices(BasisAvatar avatar, SkinnedMeshRenderer skinnedMesh, int[] indices)
         {
             var ret = new List<BlendShape>();
-            if (avatarDescriptor != null &&
-                avatarDescriptor.customEyeLookSettings.eyelidsBlendshapes != null &&
-                avatarDescriptor.customEyeLookSettings.eyelidsSkinnedMesh != null &&
-                avatarDescriptor.customEyeLookSettings.eyelidsSkinnedMesh.sharedMesh != null)
-            {
-                var skinnedMesh = avatarDescriptor.customEyeLookSettings.eyelidsSkinnedMesh;
-                var transformPath = GetPathFromAvatarRoot(skinnedMesh.transform, avatarDescriptor);
-                if (transformPath == null) { return ret; }
+            if (avatar == null || skinnedMesh == null || skinnedMesh.sharedMesh == null || indices == null) { return ret; }
 
-                foreach (var index in avatarDescriptor.customEyeLookSettings.eyelidsBlendshapes)
+            var transformPath = GetPathFromAvatarRoot(skinnedMesh.transform, avatar);
+            if (transformPath == null) { return ret; }
+
+            foreach (var index in indices)
+            {
+                if (0 <= index && index < skinnedMesh.sharedMesh.blendShapeCount)
                 {
-                    if (0 <= index && index < skinnedMesh.sharedMesh.blendShapeCount)
-                    {
-                        var name = skinnedMesh.sharedMesh.GetBlendShapeName(index);
-                        ret.Add(new BlendShape(path: transformPath, name: name));
-                    }
+                    ret.Add(new BlendShape(path: transformPath, name: skinnedMesh.sharedMesh.GetBlendShapeName(index)));
                 }
             }
             return ret;
         }
 
-        public static List<BlendShape> GetLipSyncBlendShapes(VRCAvatarDescriptor avatarDescriptor)
+        public static string GetPathFromAvatarRoot(Transform transform, BasisAvatar avatar)
         {
-            var ret = new List<BlendShape>();
-
-            if (avatarDescriptor != null &&
-                avatarDescriptor.VisemeSkinnedMesh != null &&
-                avatarDescriptor.VisemeBlendShapes is string[])
-            {
-                var skinnedMesh = avatarDescriptor.VisemeSkinnedMesh;
-                var transformPath = GetPathFromAvatarRoot(skinnedMesh.transform, avatarDescriptor);
-                if (transformPath == null) { return ret; }
-
-                foreach (var name in avatarDescriptor.VisemeBlendShapes)
-                {
-                    ret.Add(new BlendShape(path: transformPath, name: name));
-                }
-            }
-
-            return ret;
-        }
-
-        public static string GetPathFromAvatarRoot(Transform transform, VRCAvatarDescriptor avatarDescriptor)
-        {
-            if (avatarDescriptor == null || avatarDescriptor.gameObject == null) { return null; }
-            var animator = avatarDescriptor.gameObject.GetComponent<Animator>();
+            if (avatar == null || avatar.gameObject == null) { return null; }
+            var animator = avatar.gameObject.GetComponent<Animator>();
             if (animator == null) { return null; }
             return AnimationUtility.CalculateTransformPath(transform, animator.transform);
         }
 
-        public static SkinnedMeshRenderer GetMeshByPath(string pathFromAvatarRoot, VRCAvatarDescriptor avatarDescriptor)
+        public static SkinnedMeshRenderer GetMeshByPath(string pathFromAvatarRoot, BasisAvatar avatar)
         {
-            if (avatarDescriptor == null || avatarDescriptor.gameObject == null) { return null; }
+            if (avatar == null || avatar.gameObject == null) { return null; }
 
-            var animator = avatarDescriptor.gameObject.GetComponent<Animator>();
+            var animator = avatar.gameObject.GetComponent<Animator>();
             if (animator == null) { return null; }
 
             var transform = animator.transform.Find(pathFromAvatarRoot);
@@ -285,15 +215,15 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             return transform.gameObject.GetComponent<SkinnedMeshRenderer>();
         }
 
-        public static Dictionary<BlendShape, float> GetBlendShapeValues(SkinnedMeshRenderer skinnedMeshRenderer, VRCAvatarDescriptor avatarDescriptor, bool excludeBlink, bool excludeLipSync)
+        public static Dictionary<BlendShape, float> GetBlendShapeValues(SkinnedMeshRenderer skinnedMeshRenderer, BasisAvatar avatar, bool excludeBlink, bool excludeLipSync)
         {
             var values = new Dictionary<BlendShape, float>();
 
             if (skinnedMeshRenderer == null || skinnedMeshRenderer.sharedMesh == null) { return values; }
-            var transformPath = GetPathFromAvatarRoot(skinnedMeshRenderer.transform, avatarDescriptor);
+            var transformPath = GetPathFromAvatarRoot(skinnedMeshRenderer.transform, avatar);
             if (transformPath == null) { return values; }
 
-            var toBeExcluded = GetBlendShapesToBeExcluded(avatarDescriptor, excludeBlink, excludeLipSync);
+            var toBeExcluded = GetBlendShapesToBeExcluded(avatar, excludeBlink, excludeLipSync);
 
             for (int i = 0; i < skinnedMeshRenderer.sharedMesh.blendShapeCount; i++)
             {
@@ -313,9 +243,9 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             return values;
         }
 
-        public static Dictionary<BlendShape, float> GetFaceMeshBlendShapeValues(VRCAvatarDescriptor avatarDescriptor, bool excludeBlink, bool excludeLipSync)
+        public static Dictionary<BlendShape, float> GetFaceMeshBlendShapeValues(BasisAvatar avatar, bool excludeBlink, bool excludeLipSync)
         {
-            return GetBlendShapeValues(GetFaceMesh(avatarDescriptor), avatarDescriptor, excludeBlink, excludeLipSync);
+            return GetBlendShapeValues(GetFaceMesh(avatar), avatar, excludeBlink, excludeLipSync);
         }
 
         public static string ConvertNameToSafePath(string name)
@@ -374,10 +304,10 @@ namespace Suzuryg.FaceEmo.Detail.AV3
 
         private static HumanPose _poseCache;
         private static AnimationClip _poseClipCache;
-        public static AnimationClip GetAvatarPoseClip(VRCAvatarDescriptor avatarDescriptor)
+        public static AnimationClip GetAvatarPoseClip(BasisAvatar avatar)
         {
-            if (avatarDescriptor == null) { return null; }
-            var clonedAvatar = UnityEngine.Object.Instantiate(avatarDescriptor.gameObject);
+            if (avatar == null) { return null; }
+            var clonedAvatar = UnityEngine.Object.Instantiate(avatar.gameObject);
             try
             {
                 clonedAvatar.transform.localPosition = Vector3.zero;
@@ -494,7 +424,7 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             return synthesized;
         }
 
-        public static AnimationClip SynthesizeAvatarPose(AnimationClip animationClip, VRCAvatarDescriptor avatarDescriptor) => SynthesizeClip(GetAvatarPoseClip(avatarDescriptor), animationClip);
+        public static AnimationClip SynthesizeAvatarPose(AnimationClip animationClip, BasisAvatar avatar) => SynthesizeClip(GetAvatarPoseClip(avatar), animationClip);
 
         public static void CombineExpressions(AnimationClip leftHand, AnimationClip rightHand, AnimationClip destination)
         {

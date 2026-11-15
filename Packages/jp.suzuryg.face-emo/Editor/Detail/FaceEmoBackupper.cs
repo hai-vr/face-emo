@@ -7,14 +7,12 @@ using Suzuryg.FaceEmo.Detail.Data;
 using Suzuryg.FaceEmo.Detail.View;
 using UnityEditor;
 using UnityEngine;
+using Basis.Scripts.BasisSdk;
 using Suzuryg.FaceEmo.Domain;
 using System;
 using System.Linq;
 using UniRx;
-using VRC.SDK3.Avatars.Components;
 using Suzuryg.FaceEmo.Detail.Localization;
-using VRC.Dynamics;
-using VRC.SDK3.Dynamics.Contact.Components;
 
 namespace Suzuryg.FaceEmo.Detail
 {
@@ -185,18 +183,6 @@ namespace Suzuryg.FaceEmo.Detail
             {
                 if (transform != null) { _aV3Setting.AdditionalTransformObjectPaths.Add(transform.GetFullPath()); }
             }
-
-            // Contact receivers
-            _aV3Setting.ContactReceiverPaths.Clear();
-            _aV3Setting.ContactReceiverParameterNames.Clear();
-            foreach (var item in _aV3Setting.ContactReceivers)
-            {
-                if (item is ContactReceiver contactReceiver && contactReceiver != null)
-                {
-                    _aV3Setting.ContactReceiverPaths.Add(contactReceiver.gameObject.GetFullPath());
-                    _aV3Setting.ContactReceiverParameterNames.Add(contactReceiver.parameter);
-                }
-            }
         }
 
         private void RestorePath()
@@ -204,7 +190,7 @@ namespace Suzuryg.FaceEmo.Detail
             // Avatar
             if (_aV3Setting.TargetAvatarPath.StartsWith("/") &&
                 GameObject.Find(_aV3Setting.TargetAvatarPath) is GameObject avatarRoot && avatarRoot != null &&
-                avatarRoot.GetComponent<VRCAvatarDescriptor>() is VRCAvatarDescriptor avatarDescriptor && avatarDescriptor != null)
+                avatarRoot.GetComponent<BasisAvatar>() is BasisAvatar avatarDescriptor && avatarDescriptor != null)
             {
                 _aV3Setting.TargetAvatar = avatarDescriptor;
             }
@@ -219,7 +205,7 @@ namespace Suzuryg.FaceEmo.Detail
             {
                 if (path.StartsWith("/") &&
                     GameObject.Find(path) is GameObject gameObject && gameObject != null &&
-                    gameObject.GetComponent<VRCAvatarDescriptor>() is VRCAvatarDescriptor subAvatar && subAvatar != null)
+                    gameObject.GetComponent<BasisAvatar>() is BasisAvatar subAvatar && subAvatar != null)
                 {
                     _aV3Setting.SubTargetAvatars.Add(subAvatar);
                 }
@@ -272,44 +258,6 @@ namespace Suzuryg.FaceEmo.Detail
                 else
                 {
                     Debug.LogError($"{_localizationTable.Backupper_Message_FailedToFindTransformObject}\n{path}");
-                }
-            }
-
-            // Contact receivers
-            _aV3Setting.ContactReceivers.Clear();
-            for (int i = 0; i < _aV3Setting.ContactReceiverPaths.Count; i++)
-            {
-                var path = _aV3Setting.ContactReceiverPaths[i];
-                string parameterName;
-                if (i < _aV3Setting.ContactReceiverParameterNames.Count)
-                {
-                    parameterName = _aV3Setting.ContactReceiverParameterNames[i];
-                }
-                else { break; }
-
-                if (path.StartsWith("/") &&
-                    GameObject.Find(path) is GameObject gameObject && gameObject != null)
-                {
-                    var receivers = gameObject.GetComponents<VRCContactReceiver>();
-                    var found = false;
-                    foreach (var receiver in receivers)
-                    {
-                        if (receiver != null && receiver.parameter == parameterName)
-                        {
-                            found = true;
-                            _aV3Setting.ContactReceivers.Add(receiver);
-                            break;
-                        }
-                    }
-
-                    if (!found)
-                    {
-                        Debug.LogError($"{_localizationTable.Backupper_Message_FailedToFindContactReceiver}\npath: {path}, parameter: {parameterName}");
-                    }
-                }
-                else
-                {
-                    Debug.LogError($"{_localizationTable.Backupper_Message_FailedToFindContactReceiver}\npath: {path}, parameter: {parameterName}");
                 }
             }
         }

@@ -3,7 +3,7 @@
   "displayName": "FaceEmo",
   "version": "1.7.0",
   "unity": "2022.3",
-  "description": "Face emote configuration tool for VRChat Avatars 3.0",
+  "description": "Face emote configuration tool for Basis Framework avatars (SDK-free port of FaceEmo)",
   "author": {
     "name": "suzuryg",
     "email": "suzuryg@outlook.com",

@@ -1,10 +1,10 @@
-﻿using System;
+﻿using Basis.Scripts.BasisSdk;
+using System;
 using JetBrains.Annotations;
 using Suzuryg.FaceEmo.Components.Settings;
 using Suzuryg.FaceEmo.Detail.AV3;
 using UnityEditor;
 using UnityEngine;
-using VRC.SDK3.Avatars.Components;
 using Object = UnityEngine.Object;
 
 namespace Suzuryg.FaceEmo.Detail.ExpressionEditor.Models
@@ -64,7 +64,7 @@ namespace Suzuryg.FaceEmo.Detail.ExpressionEditor.Models
             if (_previewAvatar == null) return;
 
             var animator = _previewAvatar.GetComponent<Animator>();
-            var desc = _previewAvatar.GetComponent<VRCAvatarDescriptor>();
+            var desc = _previewAvatar.GetComponent<BasisAvatar>();
             AvatarViewPosition = GetAvatarViewPosition(_previewAvatar, animator, desc);
             if (desc != null) Object.DestroyImmediate(desc);
 
@@ -77,7 +77,7 @@ namespace Suzuryg.FaceEmo.Detail.ExpressionEditor.Models
             _previewAvatar.SetActive(true);
             return;
 
-            static Vector3 GetAvatarViewPosition(GameObject clonedAvatar, Animator animator, VRCAvatarDescriptor desc)
+            static Vector3 GetAvatarViewPosition(GameObject clonedAvatar, Animator animator, BasisAvatar desc)
             {
                 if (desc == null) return Origin;
 
@@ -89,7 +89,7 @@ namespace Suzuryg.FaceEmo.Detail.ExpressionEditor.Models
                 return GetAvatarHeadPosition(clonedAvatar, animator, desc);
             }
 
-            static Vector3 GetAvatarHeadPosition(GameObject clonedAvatar, Animator animator, VRCAvatarDescriptor desc)
+            static Vector3 GetAvatarHeadPosition(GameObject clonedAvatar, Animator animator, BasisAvatar desc)
             {
                 if (animator == null || !animator.isHuman || desc == null) return Origin;
 

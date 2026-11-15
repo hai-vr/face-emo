@@ -164,7 +164,7 @@ namespace Suzuryg.FaceEmo.AppMain
             Container.Bind<GestureTableElement>().AsTransient();
             Container.Bind<DefaultsProviderGenerator>().AsTransient();
 
-            Container.Bind<IFxGenerator>().To<FxGenerator>().AsTransient();
+            Container.Bind<IFxGenerator>().To<BasisBaker>().AsTransient();
             Container.Bind<IRestorer>().To<FaceEmoRestorer>().AsTransient();
 
             Container.Bind<MainView>().AsTransient();
