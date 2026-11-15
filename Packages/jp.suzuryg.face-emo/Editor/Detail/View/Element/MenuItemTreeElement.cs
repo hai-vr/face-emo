@@ -14,6 +14,9 @@ using UnityEditor;
 using UnityEngine.UIElements;
 using UnityEditor.UIElements;
 using UnityEditor.IMGUI.Controls;
+#if UNITY_6000_2_OR_NEWER
+using TreeViewItem = UnityEditor.IMGUI.Controls.TreeViewItem<int>;
+#endif
 using UniRx;
 
 namespace Suzuryg.FaceEmo.Detail.View.Element

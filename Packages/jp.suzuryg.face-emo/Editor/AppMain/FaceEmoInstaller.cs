@@ -21,6 +21,9 @@ using Suzuryg.FaceEmo.Detail.ExpressionEditor.Presenters;
 using UnityEngine;
 using UnityEditor;
 using Zenject;
+#if UNITY_6000_2_OR_NEWER
+using TreeViewState = UnityEditor.IMGUI.Controls.TreeViewState<int>;
+#endif
 
 namespace Suzuryg.FaceEmo.AppMain
 {
