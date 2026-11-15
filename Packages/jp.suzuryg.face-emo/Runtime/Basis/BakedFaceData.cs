@@ -23,6 +23,7 @@ namespace Suzuryg.FaceEmo.Baked
         public List<Group> Groups = new List<Group>();
         public List<Item> Items = new List<Item>();
         public int DefaultMode = -1;
+        public float TransitionSeconds;   // lerp time between expressions (FaceEmo "Transition Duration"); 0 = instant
 
         public static int[] NewTable() { var t = new int[64]; for (int i = 0; i < 64; i++) t[i] = -1; return t; }
 
@@ -49,6 +50,7 @@ namespace Suzuryg.FaceEmo.Baked
             foreach (var g in Groups) sb.Append("G|").Append(Esc(g.Name)).Append('|').Append(g.Parent).Append('\n');
             foreach (var i in Items) sb.Append("I|").Append(i.Group).Append('|').Append(i.Type).Append('|').Append(i.Index).Append('\n');
             sb.Append("D|").Append(DefaultMode).Append('\n');
+            sb.Append("S|").Append(F(TransitionSeconds)).Append('\n');
             return sb.ToString();
         }
 
@@ -76,6 +78,7 @@ namespace Suzuryg.FaceEmo.Baked
                     case "G": d.Groups.Add(new Group { Name = Unesc(f[1]), Parent = int.Parse(f[2]) }); break;
                     case "I": d.Items.Add(new Item { Group = int.Parse(f[1]), Type = f[2][0], Index = int.Parse(f[3]) }); break;
                     case "D": d.DefaultMode = int.Parse(f[1]); break;
+                    case "S": d.TransitionSeconds = P(f[1]); break;
                     default: throw new FormatException("Unknown line " + f[0]);
                 }
             }

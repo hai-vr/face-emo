@@ -31,6 +31,7 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             if (avatar == null) throw new FaceEmoException("Target avatar is not set.");
             var ctx = new Context(avatar.transform);
             var data = Bake(menu, ctx);
+            data.TransitionSeconds = (float)_aV3Setting.TransitionDurationSeconds;
 
             var dir = $"Assets/FaceEmo/{avatar.gameObject.name}";
             Directory.CreateDirectory(dir);

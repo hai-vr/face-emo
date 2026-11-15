@@ -73,6 +73,14 @@ namespace Suzuryg.FaceEmo.Baked
         int[] _mark;           // per target, epoch of the last expression that set it
         int _epoch;
         int _currentExpr = -1;
+        float _transition;     // seconds, from the S record
+        float[] _cur;          // 4 per target: value last written
+        float[] _from;         // 4 per target: value when the current blend started
+        float[] _to;           // 4 per target: goal of the current blend
+        int[] _act;            // targets still blending
+        byte[] _isAct;
+        int _actCount;
+        float _blendElapsed;
 
         // ---- finger state ----
         BasisAvatar _avatar;
@@ -187,7 +195,7 @@ namespace Suzuryg.FaceEmo.Baked
 
         void Parse()
         {
-            _modeCount = 0; _branchCount = 0; _defaultMode = -1; _groupCount = 0; _itemCount = 0; _targetCount = 0; _exprCount = 0;
+            _modeCount = 0; _branchCount = 0; _defaultMode = -1; _groupCount = 0; _itemCount = 0; _targetCount = 0; _exprCount = 0; _transition = 0f; _actCount = 0;
             if (Data == null) return;
             string[] lines = Data.text.Split('\n');
             int entries = 0;
@@ -219,6 +227,11 @@ namespace Suzuryg.FaceEmo.Baked
             _tSub = new int[_targetCount];
             _tRest = new float[_targetCount * 4];
             _mark = new int[_targetCount];
+            _cur = new float[_targetCount * 4];
+            _from = new float[_targetCount * 4];
+            _to = new float[_targetCount * 4];
+            _act = new int[_targetCount];
+            _isAct = new byte[_targetCount];
             _exStart = new int[_exprCount];
             _exCount = new int[_exprCount];
             _exTarget = new int[entries];
@@ -238,6 +251,7 @@ namespace Suzuryg.FaceEmo.Baked
                         string[] rv = f[4].Split(',');
                         for (int k = 0; k < rv.Length && k < 4; k++) _tRest[t * 4 + k] = F(rv[k]);
                     }
+                    for (int k = 0; k < 4; k++) _cur[t * 4 + k] = _tRest[t * 4 + k];
                     t++;
                 }
                 else if (f[0] == "X")
@@ -287,6 +301,10 @@ namespace Suzuryg.FaceEmo.Baked
                 {
                     _defaultMode = I(f[1]);
                 }
+                else if (f[0] == "S")
+                {
+                    _transition = F(f[1]);
+                }
             }
         }
 
@@ -307,7 +325,22 @@ namespace Suzuryg.FaceEmo.Baked
             }
         }
 
-        // Shows expression e (-1 = none). Targets the previous expression set and this one does not are put back to rest.
+        // Sets the goal of target t to src[off..]. Continuous targets lerp there over the transition time; on/off targets,
+        // and everything when the transition time is 0, switch at once.
+        void SetGoal(int t, float[] src, int off)
+        {
+            int o = t * 4;
+            if (_tKind[t] >= 4 || _transition <= 0f)
+            {
+                for (int k = 0; k < 4; k++) { _cur[o + k] = src[off + k]; _from[o + k] = src[off + k]; _to[o + k] = src[off + k]; }
+                WriteTarget(t, _cur, o);
+                return;
+            }
+            for (int k = 0; k < 4; k++) { _from[o + k] = _cur[o + k]; _to[o + k] = src[off + k]; }
+            if (_isAct[t] == 0) { _isAct[t] = 1; _act[_actCount] = t; _actCount++; }
+        }
+
+        // Shows expression e (-1 = none). Targets the previous expression set (or that are still blending) and this one does not go back to rest.
         void ShowExpression(int e)
         {
             if (e == _currentExpr) return;
@@ -317,21 +350,55 @@ namespace Suzuryg.FaceEmo.Baked
                 int s = _exStart[e];
                 for (int k = 0; k < _exCount[e]; k++) _mark[_exTarget[s + k]] = _epoch;
             }
+            for (int i = 0; i < _actCount; i++)
+            {
+                int t = _act[i];
+                if (_mark[t] != _epoch) SetGoal(t, _tRest, t * 4);
+            }
             if (_currentExpr >= 0)
             {
                 int s0 = _exStart[_currentExpr];
                 for (int k = 0; k < _exCount[_currentExpr]; k++)
                 {
                     int t = _exTarget[s0 + k];
-                    if (_mark[t] != _epoch) WriteTarget(t, _tRest, t * 4);
+                    if (_mark[t] != _epoch) SetGoal(t, _tRest, t * 4);
                 }
             }
             if (e >= 0)
             {
                 int s = _exStart[e];
-                for (int k = 0; k < _exCount[e]; k++) WriteTarget(_exTarget[s + k], _exVal, (s + k) * 4);
+                for (int k = 0; k < _exCount[e]; k++) SetGoal(_exTarget[s + k], _exVal, (s + k) * 4);
             }
+            _blendElapsed = 0f;
             _currentExpr = e;
+        }
+
+        // Moves every blending target along; called every frame.
+        void StepBlend()
+        {
+            if (_actCount == 0) return;
+            _blendElapsed += Time.deltaTime;
+            float a = _transition > 0f ? _blendElapsed / _transition : 1f;
+            if (a > 1f) a = 1f;
+            int w = 0;
+            for (int i = 0; i < _actCount; i++)
+            {
+                int t = _act[i];
+                int o = t * 4;
+                if (_tKind[t] == 2)
+                {
+                    Quaternion q = Quaternion.Slerp(new Quaternion(_from[o], _from[o + 1], _from[o + 2], _from[o + 3]), new Quaternion(_to[o], _to[o + 1], _to[o + 2], _to[o + 3]), a);
+                    _cur[o] = q.x; _cur[o + 1] = q.y; _cur[o + 2] = q.z; _cur[o + 3] = q.w;
+                }
+                else
+                {
+                    for (int k = 0; k < 4; k++) _cur[o + k] = _from[o + k] + (_to[o + k] - _from[o + k]) * a;
+                }
+                WriteTarget(t, _cur, o);
+                if (a < 1f) { _act[w] = t; w++; }
+                else _isAct[t] = 0;
+            }
+            _actCount = w;
         }
 
         // Branch for the current mode and gestures; the expression that goes with it.
@@ -356,6 +423,7 @@ namespace Suzuryg.FaceEmo.Baked
 #if FACEEMO_FREEHAND
             if (_freehand != null) _freehand.PumpEvents();
 #endif
+            StepBlend();
             if (Time.time < _nextEval) return;
             _nextEval = Time.time + EvaluateInterval;
 
