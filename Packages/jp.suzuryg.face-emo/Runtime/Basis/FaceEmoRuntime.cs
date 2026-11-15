@@ -33,6 +33,7 @@ namespace Suzuryg.FaceEmo.Baked
         public GameObject[] GameObjects;
         public Behaviour[] Behaviours;
         public Renderer[] Renderers;
+        public Texture2D[] Icons;      // menu pictures (face thumbnails) referenced by the K records
 
         // ---- tuning ----
         public float CurlOn = 100f;      // degrees of total finger curl; hysteresis between On and Off
@@ -50,8 +51,11 @@ namespace Suzuryg.FaceEmo.Baked
         int _modeCount;
         int[] _modeTable;      // modeCount * 64 : branch index or -1
         int[] _modeAnim;       // expression index or -1
+        int[] _modeFlags;
         string[] _modeName;
         int _branchCount;
+        int[] _modeIcon;
+        int[] _branchIcon;
         int[] _branchBase;     // expression index or -1
         int _defaultMode;
         int _groupCount;
@@ -96,7 +100,8 @@ namespace Suzuryg.FaceEmo.Baked
         int _rightGesture;
         int _mode;
         int _branch = -2;
-        int _overrideL = -1;      // Emote Select: fixed gestures, -1 = use the hands
+        int _emoteExpr = -1;      // Emote Select: expression shown instead of the hands' one, -1 = use the hands
+        int _overrideL = -1;      // fixed gestures, -1 = use the hands (API only)
         int _overrideR = -1;
         byte _ready;
         byte _isOwner;
@@ -216,8 +221,13 @@ namespace Suzuryg.FaceEmo.Baked
             }
             _modeTable = new int[_modeCount * 64];
             _modeAnim = new int[_modeCount];
+            _modeFlags = new int[_modeCount];
             _modeName = new string[_modeCount];
             _branchBase = new int[_branchCount];
+            _branchIcon = new int[_branchCount];
+            _modeIcon = new int[_modeCount];
+            for (int i = 0; i < _branchCount; i++) _branchIcon[i] = -1;
+            for (int i = 0; i < _modeCount; i++) _modeIcon[i] = -1;
             _groupName = new string[_groupCount];
             _itemGroup = new int[_itemCount];
             _itemIsGroup = new byte[_itemCount];
@@ -281,6 +291,7 @@ namespace Suzuryg.FaceEmo.Baked
                 {
                     _modeName[m] = Unesc(f[1]);
                     _modeAnim[m] = I(f[2]);
+                    _modeFlags[m] = I(f[3]);
                     string[] cells = f[4].Split(',');
                     for (int c = 0; c < 64; c++) _modeTable[m * 64 + c] = I(cells[c]);
                     m++;
@@ -304,6 +315,12 @@ namespace Suzuryg.FaceEmo.Baked
                 else if (f[0] == "S")
                 {
                     _transition = F(f[1]);
+                }
+                else if (f[0] == "K")
+                {
+                    int ki = I(f[2]);
+                    if (f[1] == "M") { if (ki >= 0 && ki < _modeCount) _modeIcon[ki] = I(f[3]); }
+                    else { if (ki >= 0 && ki < _branchCount) _branchIcon[ki] = I(f[3]); }
                 }
             }
         }
@@ -437,7 +454,7 @@ namespace Suzuryg.FaceEmo.Baked
                 _leftGesture = l; _rightGesture = r; _branch = branch;
                 if (LogChanges) Debug.Log("FaceEmo gestures L=" + l + " R=" + r + " mode=" + _mode + " branch=" + branch);
             }
-            ShowExpression(ResolveExpression(branch));
+            ShowExpression(_emoteExpr >= 0 ? _emoteExpr : ResolveExpression(branch));
         }
 
         // ================= Freehand menu =================
@@ -462,30 +479,31 @@ namespace Suzuryg.FaceEmo.Baked
                 if (!_freehand.AddRoot(root)) Debug.Log("FaceEmo: Freehand refused the mode menu");
             }
 
-            // Emote Select: left gesture -> right gesture
-            string[] names = GestureNames.Split(',');
+            // Emote Select, laid out like FaceEmo's: the groups, then a folder per mode with its default face and its branches.
             FreehandMenu es = new FreehandMenu();
             es.Layout = FreehandLayout.RadialClockwise;
             FreehandItem off = new FreehandItem("es_off", "faceemo.off", OnItemPressed);
+            off.Icon = FreehandIconRef.FromName("back_hand");
             es.Items.Add(off);
-            for (int l = 0; l < 8; l++)
+            AddEmoteItems(es, -1);
+            if (es.Items.Count > 1)
             {
-                FreehandItem left = new FreehandItem("esl" + l, OnItemPressed);
-                left.LabelRaw = "L " + names[l];
-                FreehandMenu sub = new FreehandMenu();
-                sub.Layout = FreehandLayout.RadialClockwise;
-                for (int r = 0; r < 8; r++)
-                {
-                    FreehandItem right = new FreehandItem("esr" + l + "_" + r, OnItemPressed);
-                    right.LabelRaw = "R " + names[r];
-                    sub.Items.Add(right);
-                }
-                left.Submenu = sub;
-                es.Items.Add(left);
+                FreehandRootMenu esRoot = new FreehandRootMenu(PropUuid, "faceemo-emote", "faceemo.emote", es);
+                if (!_freehand.AddRoot(esRoot)) Debug.Log("FaceEmo: Freehand refused the Emote Select menu");
             }
-            FreehandRootMenu esRoot = new FreehandRootMenu(PropUuid, "faceemo-emote", "faceemo.emote", es);
-            if (!_freehand.AddRoot(esRoot)) Debug.Log("FaceEmo: Freehand refused the Emote Select menu");
+            _freehand.AddLocalization("en", _titles);
+            _freehand.OnIconRequested += OnIconRequested;
             MarkSelected(-1, _mode);
+        }
+
+        // A sub-menu is titled by the localization key of its item (the item id when none is given, which showed "em0"):
+        // the label of these items is a raw name, so register the name as the text of a key of its own.
+        Dictionary<string, string> _titles = new Dictionary<string, string>();
+        string TitleKey(string itemId, string name)
+        {
+            string key = "faceemo.t." + itemId;
+            _titles[key] = name;
+            return key;
         }
 
         FreehandMenu BuildGroupMenu(int group)
@@ -498,8 +516,9 @@ namespace Suzuryg.FaceEmo.Baked
                 if (_itemIsGroup[i] == 1)
                 {
                     int gi = _itemIndex[i];
-                    FreehandItem gitem = new FreehandItem("g" + gi, OnItemPressed);
+                    FreehandItem gitem = new FreehandItem("g" + gi, TitleKey("g" + gi, _groupName[gi]), OnItemPressed);
                     gitem.LabelRaw = _groupName[gi];
+                    gitem.Icon = FreehandIconRef.FromName("folder");
                     gitem.Submenu = BuildGroupMenu(gi);
                     menu.Items.Add(gitem);
                 }
@@ -508,10 +527,82 @@ namespace Suzuryg.FaceEmo.Baked
                     int mi = _itemIndex[i];
                     FreehandItem mitem = new FreehandItem("m" + mi, OnItemPressed);
                     mitem.LabelRaw = _modeName[mi];
+                    if (HasIcon(_modeIcon[mi])) mitem.CustomIcon = "m" + mi;
+                    else mitem.Icon = FreehandIconRef.FromName("mood");
                     menu.Items.Add(mitem);
                 }
             }
             return menu;
+        }
+
+        bool HasIcon(int ic)
+        {
+            return ic >= 0 && Icons != null && ic < Icons.Length && Icons[ic] != null;
+        }
+
+        // The pictures the menu asks for, by the names given to CustomIcon: m<mode> and b<branch>.
+        void OnIconRequested(string name)
+        {
+            int ic = -1;
+            if (name.StartsWith("m")) { int i = I(name.Substring(1)); if (i >= 0 && i < _modeCount) ic = _modeIcon[i]; }
+            else if (name.StartsWith("b")) { int i = I(name.Substring(1)); if (i >= 0 && i < _branchCount) ic = _branchIcon[i]; }
+            if (HasIcon(ic)) _freehand.SendIconTexture(name, Icons[ic]);
+            else _freehand.SkipIcon(name);
+        }
+
+        // Items of the Emote Select menu for the items of one group (-1 = root).
+        void AddEmoteItems(FreehandMenu menu, int group)
+        {
+            for (int i = 0; i < _itemCount; i++)
+            {
+                if (_itemGroup[i] != group) continue;
+                if (_itemIsGroup[i] == 1)
+                {
+                    int gi = _itemIndex[i];
+                    FreehandMenu sub = new FreehandMenu();
+                    sub.Layout = FreehandLayout.RadialClockwise;
+                    AddEmoteItems(sub, gi);
+                    if (sub.Items.Count == 0) continue;
+                    FreehandItem gitem = new FreehandItem("eg" + gi, TitleKey("eg" + gi, _groupName[gi]), OnItemPressed);
+                    gitem.LabelRaw = _groupName[gi];
+                    gitem.Icon = FreehandIconRef.FromName("folder");
+                    gitem.Submenu = sub;
+                    menu.Items.Add(gitem);
+                }
+                else
+                {
+                    int mi = _itemIndex[i];
+                    FreehandMenu sub = new FreehandMenu();
+                    sub.Layout = FreehandLayout.RadialClockwise;
+                    if ((_modeFlags[mi] & 64) != 0 && _modeAnim[mi] >= 0)
+                    {
+                        FreehandItem d = new FreehandItem("ed" + mi, OnItemPressed);
+                        d.LabelRaw = _modeName[mi];
+                        if (HasIcon(_modeIcon[mi])) d.CustomIcon = "m" + mi; else d.Icon = FreehandIconRef.FromName("mood");
+                        sub.Items.Add(d);
+                    }
+                    int n = 0;
+                    for (int c = 0; c < 64; c++)
+                    {
+                        int bi = _modeTable[mi * 64 + c];
+                        if (bi < 0 || _branchBase[bi] < 0) continue;
+                        bool seen = false;
+                        for (int c2 = 0; c2 < c; c2++) if (_modeTable[mi * 64 + c2] == bi) seen = true;
+                        if (seen) continue;
+                        n++;
+                        FreehandItem e = new FreehandItem("eb" + bi, OnItemPressed);
+                        e.LabelRaw = "Emote " + n;
+                        if (HasIcon(_branchIcon[bi])) e.CustomIcon = "b" + bi; else e.Icon = FreehandIconRef.FromName("mood");
+                        sub.Items.Add(e);
+                    }
+                    if (sub.Items.Count == 0) continue;
+                    FreehandItem mitem = new FreehandItem("em" + mi, TitleKey("em" + mi, _modeName[mi]), OnItemPressed);
+                    mitem.LabelRaw = _modeName[mi];
+                    mitem.Icon = FreehandIconRef.FromName("folder");
+                    mitem.Submenu = sub;
+                    menu.Items.Add(mitem);
+                }
+            }
         }
 
         string MenuIdOfMode(int mode)
@@ -539,12 +630,17 @@ namespace Suzuryg.FaceEmo.Baked
             }
             else if (id == "es_off")
             {
-                SetOverride(-1, -1);
+                SelectEmote(-1);
             }
-            else if (id.StartsWith("esr"))
+            else if (id.StartsWith("ed"))
             {
-                string[] p = id.Substring(3).Split('_');
-                SetOverride(I(p[0]), I(p[1]));
+                int mode = I(id.Substring(2));
+                if (mode >= 0 && mode < _modeCount) SelectEmote(_modeAnim[mode]);
+            }
+            else if (id.StartsWith("eb"))
+            {
+                int branch = I(id.Substring(2));
+                if (branch >= 0 && branch < _branchCount) SelectEmote(_branchBase[branch]);
             }
         }
 #else
@@ -561,6 +657,14 @@ namespace Suzuryg.FaceEmo.Baked
             SendState();
         }
 
+        void SelectEmote(int expr)
+        {
+            if (expr >= _exprCount) expr = -1;
+            _emoteExpr = expr;
+            _nextEval = 0f;
+            SendState();
+        }
+
         void SetOverride(int l, int r)
         {
             _overrideL = l; _overrideR = r;
@@ -569,17 +673,19 @@ namespace Suzuryg.FaceEmo.Baked
         }
 
         // ================= network =================
-        // Message 1: [1, modeLo, modeHi, overrideL + 1, overrideR + 1]. Only the wearer sends; gestures need no sync because
+        // Message 1: [1, modeLo, modeHi, overrideL + 1, overrideR + 1, emoteLo, emoteHi] (emote = expression + 1, 0 = none). Only the wearer sends; gestures need no sync because
         // every client reads them from the finger bones.
 
         byte[] StateMessage()
         {
-            byte[] m = new byte[5];
+            byte[] m = new byte[7];
             m[0] = 1;
             m[1] = (byte)(_mode & 255);
             m[2] = (byte)((_mode >> 8) & 255);
             m[3] = (byte)(_overrideL + 1);
             m[4] = (byte)(_overrideR + 1);
+            m[5] = (byte)((_emoteExpr + 1) & 255);
+            m[6] = (byte)(((_emoteExpr + 1) >> 8) & 255);
             return m;
         }
 
@@ -609,6 +715,12 @@ namespace Suzuryg.FaceEmo.Baked
             _overrideL = buffer[3] - 1;
             _overrideR = buffer[4] - 1;
             if (_overrideL > 7 || _overrideR > 7) { _overrideL = -1; _overrideR = -1; }
+            _emoteExpr = -1;
+            if (buffer.Length >= 7)
+            {
+                int emote = buffer[5] + buffer[6] * 256 - 1;
+                if (emote >= 0 && emote < _exprCount) _emoteExpr = emote;
+            }
             _nextEval = 0f;
         }
 

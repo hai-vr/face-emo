@@ -1,5 +1,6 @@
 using Suzuryg.FaceEmo.Baked;
 using Suzuryg.FaceEmo.Components.Settings;
+using Suzuryg.FaceEmo.Detail.Drawing;
 using Suzuryg.FaceEmo.Domain;
 using Suzuryg.FaceEmo.UseCase;
 using System;
@@ -17,10 +18,12 @@ namespace Suzuryg.FaceEmo.Detail.AV3
     {
         public const int Pos = 1, Rot = 2, Scl = 3;
         private AV3Setting _aV3Setting;
+        private ExMenuThumbnailDrawer _thumbnailDrawer;
 
-        public BasisBaker(AV3Setting aV3Setting)
+        public BasisBaker(AV3Setting aV3Setting, ExMenuThumbnailDrawer thumbnailDrawer)
         {
             _aV3Setting = aV3Setting;
+            _thumbnailDrawer = thumbnailDrawer;
         }
 
         public List<string> GetParentPrefabPathOfMARootObjects() => new List<string>();
@@ -32,6 +35,7 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             var ctx = new Context(avatar.transform);
             var data = Bake(menu, ctx);
             data.TransitionSeconds = (float)_aV3Setting.TransitionDurationSeconds;
+            var icons = BakeIcons(ctx, data, avatar.gameObject.name);
 
             var dir = $"Assets/FaceEmo/{avatar.gameObject.name}";
             Directory.CreateDirectory(dir);
@@ -57,6 +61,7 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             refs.GameObjects = ctx.GameObjects.ToArray();
             refs.Behaviours = ctx.Behaviours.ToArray();
             refs.Renderers = ctx.Renderers.ToArray();
+            refs.Icons = icons.ToArray();
             EditorUtility.SetDirty(refs);
             if (ctx.Skipped.Count > 0)
                 Debug.LogWarning($"FaceEmo bake: skipped {ctx.Skipped.Count} unsupported curve kinds: {string.Join(", ", ctx.Skipped)}");
@@ -71,6 +76,59 @@ namespace Suzuryg.FaceEmo.Detail.AV3
                 if (type != null) return type;
             }
             return null;
+        }
+
+        // The menu pictures FaceEmo put on the VRChat expressions menu: a face thumbnail for each mode that changes the default
+        // face (when "generate thumbnails" is on) and for each branch's base animation (Emote Select). Saved as PNG files next to
+        // the baked data; their order is the index used by the K records.
+        private List<Texture2D> BakeIcons(Context ctx, BakedFaceData data, string avatarName)
+        {
+            var result = new List<Texture2D>();
+            if (!_aV3Setting.GenerateExMenuThumbnails || _thumbnailDrawer == null) return result;
+            var wanted = new List<(int kind, int index, Domain.Animation animation)>();
+            foreach (var (mi, anim, changeDefaultFace) in ctx.ModeAnimations) if (changeDefaultFace && anim != null) wanted.Add((0, mi, anim));
+            foreach (var (bi, anim) in ctx.BranchAnimations) if (anim != null) wanted.Add((1, bi, anim));
+            if (wanted.Count == 0) return result;
+
+            foreach (var w in wanted) _thumbnailDrawer.GetThumbnail(w.animation);   // asks for them...
+            _thumbnailDrawer.Update();                                               // ...and draws them
+
+            var dir = $"Assets/FaceEmo/{avatarName}/Icons";
+            Directory.CreateDirectory(dir);
+            var byGuid = new Dictionary<string, int>();
+            foreach (var w in wanted)
+            {
+                if (!byGuid.TryGetValue(w.animation.GUID, out var icon))
+                {
+                    var tex = _thumbnailDrawer.GetCachedThumbnailOrNull(w.animation);
+                    if (tex == null) continue;
+                    var path = $"{dir}/icon{result.Count}.png";
+                    File.WriteAllBytes(path, ReadablePng(tex));
+                    AssetDatabase.ImportAsset(path);
+                    var saved = AssetDatabase.LoadAssetAtPath<Texture2D>(path);
+                    if (saved == null) continue;
+                    result.Add(saved);
+                    icon = byGuid[w.animation.GUID] = result.Count - 1;
+                }
+                if (w.kind == 0) data.Modes[w.index].Icon = icon; else data.Branches[w.index].Icon = icon;
+            }
+            return result;
+        }
+
+        private static byte[] ReadablePng(Texture2D tex)
+        {
+            var rt = RenderTexture.GetTemporary(tex.width, tex.height, 0, RenderTextureFormat.ARGB32, RenderTextureReadWrite.sRGB);
+            var previous = RenderTexture.active;
+            Graphics.Blit(tex, rt);
+            RenderTexture.active = rt;
+            var copy = new Texture2D(tex.width, tex.height, TextureFormat.RGBA32, false);
+            copy.ReadPixels(new Rect(0, 0, tex.width, tex.height), 0, 0);
+            copy.Apply();
+            RenderTexture.active = previous;
+            RenderTexture.ReleaseTemporary(rt);
+            var png = copy.EncodeToPNG();
+            UnityEngine.Object.DestroyImmediate(copy);
+            return png;
         }
 
         // ----- bake -----
@@ -124,6 +182,7 @@ namespace Suzuryg.FaceEmo.Detail.AV3
                                 Flags = Flags(b.IsLeftTriggerUsed, b.IsRightTriggerUsed, b.BlinkEnabled, b.MouthMorphCancelerEnabled, b.EyeTrackingControl, b.MouthTrackingControl, false),
                             });
                             branchIdx[b] = d.Branches.Count - 1;
+                            ctx.BranchAnimations.Add((d.Branches.Count - 1, b.BaseAnimation));
                         }
                         for (int l = 0; l < 8; l++)
                             for (int r = 0; r < 8; r++)
@@ -132,6 +191,7 @@ namespace Suzuryg.FaceEmo.Detail.AV3
                                 m.Table[l * 8 + r] = cell != null && branchIdx.TryGetValue(cell, out var bi) ? bi : -1;
                             }
                         d.Modes.Add(m);
+                        ctx.ModeAnimations.Add((d.Modes.Count - 1, mode.Animation, mode.ChangeDefaultFace));
                         modeIdx[mode.GetId()] = d.Modes.Count - 1;
                         d.Items.Add(new BakedFaceData.Item { Group = groupId, Type = 'M', Index = d.Modes.Count - 1 });
                     }
@@ -163,6 +223,8 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             public readonly List<GameObject> GameObjects = new List<GameObject>();
             public readonly List<Behaviour> Behaviours = new List<Behaviour>();
             public readonly List<Renderer> Renderers = new List<Renderer>();
+            public readonly List<(int mode, Domain.Animation animation, bool changeDefaultFace)> ModeAnimations = new List<(int, Domain.Animation, bool)>();
+            public readonly List<(int branch, Domain.Animation animation)> BranchAnimations = new List<(int, Domain.Animation)>();
             public readonly HashSet<string> Skipped = new HashSet<string>();
             private readonly Dictionary<(int kind, UnityEngine.Object obj, int sub), int> _targets = new Dictionary<(int, UnityEngine.Object, int), int>();
 

@@ -11,8 +11,8 @@ namespace Suzuryg.FaceEmo.Baked
         public const string Header = "FE1";
         public class Target { public int Kind, Ref, Sub; public float[] Rest = new float[0]; }
         public class Expression { public string Name = ""; public List<int> Targets = new List<int>(); public List<float[]> Values = new List<float[]>(); }
-        public class Branch { public int Base = -1, Left = -1, Right = -1, Both = -1, Flags; }
-        public class Mode { public string Name = ""; public int Anim = -1, Flags; public int[] Table = NewTable(); }
+        public class Branch { public int Base = -1, Left = -1, Right = -1, Both = -1, Flags, Icon = -1; }
+        public class Mode { public string Name = ""; public int Anim = -1, Flags, Icon = -1; public int[] Table = NewTable(); }
         public class Group { public string Name = ""; public int Parent = -1; }
         public class Item { public int Group = -1; public char Type = 'M'; public int Index; }
 
@@ -49,6 +49,8 @@ namespace Suzuryg.FaceEmo.Baked
             foreach (var m in Modes) sb.Append("M|").Append(Esc(m.Name)).Append('|').Append(m.Anim).Append('|').Append(m.Flags).Append('|').Append(string.Join(",", m.Table)).Append('\n');
             foreach (var g in Groups) sb.Append("G|").Append(Esc(g.Name)).Append('|').Append(g.Parent).Append('\n');
             foreach (var i in Items) sb.Append("I|").Append(i.Group).Append('|').Append(i.Type).Append('|').Append(i.Index).Append('\n');
+            for (int i = 0; i < Modes.Count; i++) if (Modes[i].Icon >= 0) sb.Append("K|M|").Append(i).Append('|').Append(Modes[i].Icon).Append('\n');
+            for (int i = 0; i < Branches.Count; i++) if (Branches[i].Icon >= 0) sb.Append("K|B|").Append(i).Append('|').Append(Branches[i].Icon).Append('\n');
             sb.Append("D|").Append(DefaultMode).Append('\n');
             sb.Append("S|").Append(F(TransitionSeconds)).Append('\n');
             return sb.ToString();
@@ -79,6 +81,7 @@ namespace Suzuryg.FaceEmo.Baked
                     case "I": d.Items.Add(new Item { Group = int.Parse(f[1]), Type = f[2][0], Index = int.Parse(f[3]) }); break;
                     case "D": d.DefaultMode = int.Parse(f[1]); break;
                     case "S": d.TransitionSeconds = P(f[1]); break;
+                    case "K": if (f[1] == "M") d.Modes[int.Parse(f[2])].Icon = int.Parse(f[3]); else d.Branches[int.Parse(f[2])].Icon = int.Parse(f[3]); break;
                     default: throw new FormatException("Unknown line " + f[0]);
                 }
             }

@@ -15,6 +15,8 @@ M|name|anim|flags|table      mode; anim = mode default expression or -1;
 G|name|parent                group; parent = group index or -1 (root)
 I|group|type|index           ordered menu item in group (-1 = root); type M or G
 D|mode                       default mode index or -1
+K|M|mode|icon                mode menu picture: index into the component's Icons array (a face thumbnail); absent = no picture
+K|B|branch|icon              the same for a branch (Emote Select)
 S|seconds                    transition duration: continuous targets (kinds 0-3) lerp over this long when the
                              expression changes; on/off targets (kinds 4-6) switch at once; 0 or absent = instant
 ```
