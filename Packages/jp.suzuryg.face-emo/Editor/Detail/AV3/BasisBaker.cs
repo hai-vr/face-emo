@@ -12,7 +12,7 @@ using Basis.Scripts.BasisSdk;
 namespace Suzuryg.FaceEmo.Detail.AV3
 {
     // Replaces the VRChat FxGenerator. Turns the FaceEmo menu into FE1 data (design_docs/BASIS_BAKED_FORMAT.md)
-    // plus a FaceEmoBakedRefs component on the avatar, for the fixed Cilbox runtime script.
+    // plus a FaceEmoRuntime component on the avatar, for the fixed Cilbox runtime script.
     public class BasisBaker : IFxGenerator
     {
         public const int Pos = 1, Rot = 2, Scl = 3;
@@ -39,8 +39,9 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             AssetDatabase.ImportAsset(path);
             var text = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
 
-            var refs = avatar.GetComponent<FaceEmoBakedRefs>();
-            if (refs == null) refs = Undo.AddComponent<FaceEmoBakedRefs>(avatar.gameObject);
+            // Remove a leftover component from an older version of this baker, if the script type is gone it shows as missing.
+            var refs = avatar.GetComponent<FaceEmoRuntime>();
+            if (refs == null) refs = Undo.AddComponent<FaceEmoRuntime>(avatar.gameObject);
             Undo.RecordObject(refs, "FaceEmo bake");
             refs.Data = text;
             if (string.IsNullOrEmpty(refs.PropUuid)) refs.PropUuid = Guid.NewGuid().ToString();
