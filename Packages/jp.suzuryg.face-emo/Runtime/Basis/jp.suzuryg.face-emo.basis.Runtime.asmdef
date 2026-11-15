@@ -1,6 +1,6 @@
 {
     "name": "jp.suzuryg.face-emo.basis.Runtime",
-    "references": ["Cilbox", "BasisSDK"],
+    "references": ["Cilbox", "BasisSDK", "BasisShims", "BasisNetworkCore", "Basis Framework"],
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,

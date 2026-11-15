@@ -40,6 +40,12 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             var text = AssetDatabase.LoadAssetAtPath<TextAsset>(path);
 
             // Remove a leftover component from an older version of this baker, if the script type is gone it shows as missing.
+            // The avatar needs the Cilbox avatar box, or Basis skips the Cilbox prebuild and nothing interprets the script
+            // ("Basis build detected Cilboxable scripts, but no Cilbox component was found").
+            var boxType = FindType("Cilbox.CilboxAvatarBasis");
+            if (boxType == null) throw new FaceEmoException("Cilbox.CilboxAvatarBasis was not found: is the Basis shim package installed?");
+            if (avatar.GetComponent(boxType) == null) Undo.AddComponent(avatar.gameObject, boxType);
+
             var refs = avatar.GetComponent<FaceEmoRuntime>();
             if (refs == null) refs = Undo.AddComponent<FaceEmoRuntime>(avatar.gameObject);
             Undo.RecordObject(refs, "FaceEmo bake");
@@ -54,6 +60,16 @@ namespace Suzuryg.FaceEmo.Detail.AV3
             if (ctx.Skipped.Count > 0)
                 Debug.LogWarning($"FaceEmo bake: skipped {ctx.Skipped.Count} unsupported curve kinds: {string.Join(", ", ctx.Skipped)}");
             Debug.Log($"FaceEmo bake: {data.Modes.Count} modes, {data.Branches.Count} branches, {data.Expressions.Count} expressions, {data.Targets.Count} targets -> {path}");
+        }
+
+        private static Type FindType(string fullName)
+        {
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            {
+                var type = assembly.GetType(fullName);
+                if (type != null) return type;
+            }
+            return null;
         }
 
         // ----- bake -----
