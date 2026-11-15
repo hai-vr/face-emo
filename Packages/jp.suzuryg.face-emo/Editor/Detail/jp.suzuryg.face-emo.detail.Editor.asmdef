@@ -5,6 +5,7 @@
         "jp.suzuryg.face-emo.usecase.Runtime",
         "jp.suzuryg.face-emo.components.Runtime",
         "jp.suzuryg.face-emo.external.neuecc.unirx.Runtime",
+        "jp.suzuryg.face-emo.basis.Runtime",
         "BasisSDK"
     ],
     "includePlatforms": [

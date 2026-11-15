@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 
-namespace Suzuryg.FaceEmo.Basis
+namespace Suzuryg.FaceEmo.Baked
 {
     // Pure C# model + writer/reader of the FE1 format (see design_docs/BASIS_BAKED_FORMAT.md).
     public class BakedFaceData
@@ -22,6 +22,7 @@ namespace Suzuryg.FaceEmo.Basis
         public List<Mode> Modes = new List<Mode>();
         public List<Group> Groups = new List<Group>();
         public List<Item> Items = new List<Item>();
+        public int DefaultMode = -1;
 
         public static int[] NewTable() { var t = new int[64]; for (int i = 0; i < 64; i++) t[i] = -1; return t; }
 
@@ -47,6 +48,7 @@ namespace Suzuryg.FaceEmo.Basis
             foreach (var m in Modes) sb.Append("M|").Append(Esc(m.Name)).Append('|').Append(m.Anim).Append('|').Append(m.Flags).Append('|').Append(string.Join(",", m.Table)).Append('\n');
             foreach (var g in Groups) sb.Append("G|").Append(Esc(g.Name)).Append('|').Append(g.Parent).Append('\n');
             foreach (var i in Items) sb.Append("I|").Append(i.Group).Append('|').Append(i.Type).Append('|').Append(i.Index).Append('\n');
+            sb.Append("D|").Append(DefaultMode).Append('\n');
             return sb.ToString();
         }
 
@@ -73,6 +75,7 @@ namespace Suzuryg.FaceEmo.Basis
                         d.Modes.Add(m); break;
                     case "G": d.Groups.Add(new Group { Name = Unesc(f[1]), Parent = int.Parse(f[2]) }); break;
                     case "I": d.Items.Add(new Item { Group = int.Parse(f[1]), Type = f[2][0], Index = int.Parse(f[3]) }); break;
+                    case "D": d.DefaultMode = int.Parse(f[1]); break;
                     default: throw new FormatException("Unknown line " + f[0]);
                 }
             }

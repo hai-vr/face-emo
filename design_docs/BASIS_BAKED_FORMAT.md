@@ -14,6 +14,7 @@ M|name|anim|flags|table      mode; anim = mode default expression or -1;
                              table = 64 branch indices, cell = left*8+right, -1 = none
 G|name|parent                group; parent = group index or -1 (root)
 I|group|type|index           ordered menu item in group (-1 = root); type M or G
+D|mode                       default mode index or -1
 ```
 Target kinds (`ref` indexes the Cilbox script's typed array of that kind; `sub` as noted; `rest` = value count):
 | kind | array | sub | values |
